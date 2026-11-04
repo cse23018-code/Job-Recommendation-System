@@ -1,59 +1,81 @@
 package com.example.jobrecommendation;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Random;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+/**
+ * Generates randomized sample job listings instead of calling a live job-search API.
+ * Kept under the original class name so {@link JobRecommendationApp} needs no changes.
+ */
 public final class AdzunaJobSearch {
-    private static final ObjectMapper JSON = new ObjectMapper();
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private static final int RESULTS_PER_SEARCH = 25;
 
-    public List<Job> search(String query, String location, String countryCode) throws IOException, InterruptedException {
-        String appId = System.getenv("ADZUNA_APP_ID");
-        String appKey = System.getenv("ADZUNA_APP_KEY");
-        if (appId == null || appId.isBlank() || appKey == null || appKey.isBlank()) {
-            throw new IOException("Set ADZUNA_APP_ID and ADZUNA_APP_KEY environment variables. See README for setup.");
-        }
-        String country = countryCode == null || countryCode.isBlank() ? "in" : countryCode.trim().toLowerCase();
-        String endpoint = "https://api.adzuna.com/v1/api/jobs/" + country + "/search/1?app_id=" + encode(appId)
-                + "&app_key=" + encode(appKey) + "&results_per_page=50&what=" + encode(query.trim())
-                + "&content-type=application/json" + (location == null || location.isBlank() ? "" : "&where=" + encode(location.trim()));
-        HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint)).timeout(Duration.ofSeconds(25))
-                .header("Accept", "application/json").GET().build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() != 200) throw new IOException("Adzuna job search returned HTTP " + response.statusCode() + ". Check your API credentials and query.");
+    private static final String[] COMPANY_NAMES = {
+            "Northwind Systems", "Bluepeak Technologies", "Vertex Labs", "Riverstone Digital",
+            "Clearwater Analytics", "Ironleaf Software", "Summit & Co", "Brightline Studios",
+            "Fernhill Robotics", "Alpine Data Works", "Cobalt Cloud Partners", "Lumen Forge",
+            "Orchard Platforms", "Granite Peak Tech", "Harborview Systems", "Nimbus Group",
+            "Redstone Innovations", "Westfield Analytics", "Cascade Software Co", "Pinecrest Labs"
+    };
 
-        JsonNode root = JSON.readTree(response.body());
-        JsonNode results = root.path("results");
-        List<Job> jobs = new ArrayList<>();
-        if (results.isArray()) for (JsonNode item : results) {
-            String title = text(item.path("title"));
-            String company = text(item.path("company").path("display_name"));
-            String place = text(item.path("location").path("display_name"));
-            String description = text(item.path("description"));
-            String url = text(item.path("redirect_url"));
-            jobs.add(new Job(company, title, place, salary(item, country), description, url,
-                    Set.of(), ResumeService.extractExperienceYears(description)));
+    private static final String[] TITLE_LEVELS = {"Junior", "", "Senior", "Lead", "Staff"};
+
+    private static final String[] SKILL_POOL = {
+            "java", "python", "javascript", "typescript", "react", "node.js", "spring boot",
+            "sql", "postgresql", "mongodb", "aws", "azure", "docker", "kubernetes", "git",
+            "rest api", "graphql", "ci/cd", "machine learning", "pandas", "linux", "agile"
+    };
+
+    private final Random random = new Random();
+
+    public List<Job> search(String query, String location, String countryCode) {
+        String role = query == null || query.isBlank() ? "Software Engineer" : query.trim();
+        String place = location == null || location.isBlank() ? "Remote" : location.trim();
+        String country = countryCode == null || countryCode.isBlank() ? "in" : countryCode.trim().toLowerCase(Locale.ROOT);
+
+        List<Job> jobs = new ArrayList<>(RESULTS_PER_SEARCH);
+        for (int i = 0; i < RESULTS_PER_SEARCH; i++) {
+            jobs.add(randomJob(role, place, country, i));
         }
         return jobs;
     }
 
-    private static String salary(JsonNode item, String country) {
-        JsonNode minimum = item.path("salary_min");
-        JsonNode maximum = item.path("salary_max");
-        if (!minimum.isNumber() && !maximum.isNumber()) return "Not listed";
-        String currency = switch (country.toLowerCase()) {
+    private Job randomJob(String role, String place, String country, int index) {
+        String company = COMPANY_NAMES[random.nextInt(COMPANY_NAMES.length)];
+        String level = TITLE_LEVELS[random.nextInt(TITLE_LEVELS.length)];
+        String title = (level.isBlank() ? "" : level + " ") + capitalize(role);
+
+        Set<String> skills = randomSkills();
+        Integer requiredYears = switch (level) {
+            case "Junior" -> random.nextInt(2);
+            case "Senior", "Lead", "Staff" -> 4 + random.nextInt(6);
+            default -> random.nextInt(4);
+        };
+
+        String description = "We are hiring a " + title + " to join our team in " + place + ". "
+                + "Required skills: " + String.join(", ", skills) + ". "
+                + (requiredYears == 0 ? "Open to candidates with no prior experience."
+                : requiredYears + "+ years of relevant experience preferred.");
+
+        String salary = salaryRange(country);
+        String applyUrl = "https://jobs.example.test/listings/" + Integer.toHexString((company + title + index).hashCode());
+
+        return new Job(company, title, place, salary, description, applyUrl, skills, requiredYears);
+    }
+
+    private Set<String> randomSkills() {
+        List<String> pool = new ArrayList<>(List.of(SKILL_POOL));
+        java.util.Collections.shuffle(pool, random);
+        int count = 3 + random.nextInt(4);
+        return pool.stream().limit(count).collect(Collectors.toUnmodifiableSet());
+    }
+
+    private String salaryRange(String country) {
+        String currency = switch (country) {
             case "in" -> "₹";
             case "us" -> "$";
             case "gb" -> "£";
@@ -61,10 +83,14 @@ public final class AdzunaJobSearch {
             case "au" -> "A$";
             default -> "";
         };
-        return currency + (minimum.isNumber() ? String.format("%,.0f", minimum.asDouble()) : "?") + " – "
-                + currency + (maximum.isNumber() ? String.format("%,.0f", maximum.asDouble()) : "?");
+        int base = country.equals("in") ? 600_000 : 60_000;
+        int min = base + random.nextInt(base);
+        int max = min + base / 2 + random.nextInt(base);
+        return currency + String.format("%,d", min) + " – " + currency + String.format("%,d", max);
     }
 
-    private static String text(JsonNode node) { return node.isTextual() ? node.asText() : ""; }
-    private static String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
+    private static String capitalize(String value) {
+        if (value.isBlank()) return value;
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1);
+    }
 }

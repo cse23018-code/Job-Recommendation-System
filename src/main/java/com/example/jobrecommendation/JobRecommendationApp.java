@@ -22,7 +22,7 @@ public final class JobRecommendationApp extends JFrame {
     private final JTextField locationField = new JTextField("Bangalore", 12);
     private final JComboBox<String> countryField = new JComboBox<>(new String[]{"India (in)", "United States (us)", "United Kingdom (gb)", "Canada (ca)", "Australia (au)"});
     private final JLabel fileLabel = new JLabel("No resume selected");
-    private final JLabel statusLabel = new JLabel("Choose a resume, prepare your matching profile, then search current job listings. Listings powered by Adzuna.");
+    private final JLabel statusLabel = new JLabel("Choose a resume, prepare your matching profile, then search current job listings. Listings are generated sample data for demo purposes.");
     private final DefaultTableModel tableModel = new DefaultTableModel(
             new Object[]{"Match", "Role", "Company", "Location", "Salary", "Experience"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -260,7 +260,7 @@ public final class JobRecommendationApp extends JFrame {
         String location = locationField.getText().trim();
         String country = ((String) countryField.getSelectedItem()).replaceAll(".*\\((..?)\\)$", "$1");
         searchButton.setEnabled(false);
-        statusLabel.setText("Searching Adzuna for current listings…");
+        statusLabel.setText("Generating sample listings…");
         new SwingWorker<List<Job>, Void>() {
             @Override protected List<Job> doInBackground() throws Exception { return jobSearch.search(query, location, country); }
             @Override protected void done() {
@@ -272,7 +272,7 @@ public final class JobRecommendationApp extends JFrame {
                         tableModel.addRow(new Object[]{match.matchPercentage() + "%", match.job().title(), match.job().company(),
                                 match.job().location(), match.job().salaryRange(), match.experienceNote()});
                     }
-                    statusLabel.setText(jobs.size() + " Adzuna listings loaded. Double-click a row to open its application page.");
+                    statusLabel.setText(jobs.size() + " sample listings loaded. Double-click a row to open its application page.");
                 } catch (Exception exception) {
                     showError(exception, "Job search failed");
                 } finally {
