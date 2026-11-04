@@ -1,2 +1,26 @@
-\target
-\lib
+# Build output
+/target/
+*.class
+
+# JiaJiaOCR release jar — too large to commit, download separately (see README)
+/lib/
+
+# IDE / editor
+.vscode/
+.idea/
+*.iml
+nbproject/
+nb-configuration.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code tooling — local to this machine, not part of the project
+CLAUDE.md
+.claude/
+.mcp.json
+prompts/
+plans/
+research/
+mistakes/
