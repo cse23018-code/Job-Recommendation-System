@@ -104,6 +104,32 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <!-- maven-shade-plugin excludes system-scope dependencies, so the
+                             JiaJiaOCR jar never reaches the packaged jar unless its classes
+                             and model resources are merged into target/classes first. -->
+                        <id>unpack-jiajia-ocr</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <unzip src="${project.basedir}/lib/JiaJiaOCR-1.0.2.jar" dest="${project.build.outputDirectory}">
+                                    <patternset>
+                                        <exclude name="META-INF/**"/>
+                                    </patternset>
+                                </unzip>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.6.0</version>
                 <executions>

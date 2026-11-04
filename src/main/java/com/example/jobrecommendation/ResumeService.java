@@ -24,6 +24,7 @@ import java.util.regex.Pattern;
 public final class ResumeService {
     private static final long MAX_FILE_SIZE = 10L * 1024 * 1024;
     private static final Map<String, Set<String>> SKILL_ALIASES = aliases();
+    private volatile JiaJiaOCR ocrEngine;
     private static final Pattern EXPLICIT_SKILLS = Pattern.compile("(?i)\\b(?:(?:technical|key|core|programming|required|essential|preferred)\\s+)?skills(?:\\s+and\\s+(?:tools|technologies))?\\s*[:\\-]\\s*(.{2,400})");
     private static final Pattern EXPERIENCE = Pattern.compile("(?i)(?:\\b(\\d{1,2})(?:\\s*[-–]\\s*\\d{1,2})?\\s*\\+?\\s*(?:years?|yrs?)\\b.{0,45}\\bexperience\\b|\\bexperience\\s*[:=\\-]?\\s*(\\d{1,2})\\s*\\+?\\s*(?:years?|yrs?)\\b)");
 
@@ -56,7 +57,7 @@ public final class ResumeService {
     private String recognizePdf(Path file) throws IOException {
         StringBuilder result = new StringBuilder();
         try (PDDocument document = Loader.loadPDF(file.toFile())) {
-            JiaJiaOCR ocr = JiaJiaOCR.builder();
+            JiaJiaOCR ocr = ocrEngine();
             PDFRenderer renderer = new PDFRenderer(document);
             int pages = Math.min(document.getNumberOfPages(), 20);
             for (int page = 0; page < pages; page++) {
@@ -69,7 +70,27 @@ public final class ResumeService {
     }
 
     private String recognize(BufferedImage image) throws IOException {
-        return recognize(JiaJiaOCR.builder(), image);
+        return recognize(ocrEngine(), image);
+    }
+
+    // Loading the bundled models is expensive (hundreds of MB of native/off-heap memory),
+    // so the engine is created once and reused for the lifetime of this ResumeService.
+    private JiaJiaOCR ocrEngine() throws IOException {
+        JiaJiaOCR engine = ocrEngine;
+        if (engine == null) {
+            synchronized (this) {
+                engine = ocrEngine;
+                if (engine == null) {
+                    try {
+                        engine = JiaJiaOCR.builder();
+                    } catch (OutOfMemoryError | Exception failure) {
+                        throw new IOException(ocrFailureMessage(failure), failure);
+                    }
+                    ocrEngine = engine;
+                }
+            }
+        }
+        return engine;
     }
 
     private String recognize(JiaJiaOCR ocr, BufferedImage image) throws IOException {
@@ -80,9 +101,17 @@ public final class ResumeService {
             return result.toString().trim();
         } catch (IOException exception) {
             throw exception;
-        } catch (Exception exception) {
-            throw new IOException("The bundled OCR engine could not read this image: " + exception.getMessage(), exception);
+        } catch (OutOfMemoryError | Exception failure) {
+            throw new IOException(ocrFailureMessage(failure), failure);
         }
+    }
+
+    private static String ocrFailureMessage(Throwable failure) {
+        String detail = failure.getMessage() == null ? failure.toString() : failure.getMessage();
+        if (failure instanceof OutOfMemoryError || detail.toLowerCase(Locale.ROOT).contains("allocate")) {
+            return "The bundled OCR engine ran out of memory. Close other applications and try again.";
+        }
+        return "The bundled OCR engine could not read this file: " + detail;
     }
 
     public static Set<String> extractSkills(String text) {
