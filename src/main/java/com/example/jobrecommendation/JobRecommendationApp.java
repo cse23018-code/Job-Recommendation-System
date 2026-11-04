@@ -23,6 +23,11 @@ public final class JobRecommendationApp extends JFrame {
     private final JComboBox<String> countryField = new JComboBox<>(new String[]{"India (in)", "United States (us)", "United Kingdom (gb)", "Canada (ca)", "Australia (au)"});
     private final JLabel fileLabel = new JLabel("No resume selected");
     private final JLabel statusLabel = new JLabel("Choose a resume, prepare your matching profile, then search current job listings. Listings are generated sample data for demo purposes.");
+    private final JButton chooseButton = new JButton("Choose resume");
+    private final JButton extractButton = new JButton("Prepare profile");
+    private final JButton searchButton = new JButton("Find matching jobs");
+    private final JProgressBar resumeProgress = new JProgressBar();
+    private final JProgressBar searchProgress = new JProgressBar();
     private final DefaultTableModel tableModel = new DefaultTableModel(
             new Object[]{"Match", "Role", "Company", "Location", "Salary", "Experience"}, 0) {
         @Override public boolean isCellEditable(int row, int column) { return false; }
@@ -43,17 +48,16 @@ public final class JobRecommendationApp extends JFrame {
     }
 
     private void buildUi() {
-        JButton chooseButton = new JButton("Choose resume");
-        JButton extractButton = new JButton("Prepare profile");
-        JButton searchButton = new JButton("Find matching jobs");
         styleButton(chooseButton, false);
         styleButton(extractButton, false);
         styleButton(searchButton, true);
         extractButton.setEnabled(false);
         searchButton.setEnabled(false);
-        chooseButton.addActionListener(event -> chooseResume(extractButton));
-        extractButton.addActionListener(event -> processResume(extractButton, searchButton));
-        searchButton.addActionListener(event -> searchJobs(searchButton));
+        chooseButton.addActionListener(event -> chooseResume());
+        extractButton.addActionListener(event -> processResume());
+        searchButton.addActionListener(event -> searchJobs());
+        styleProgressBar(resumeProgress);
+        styleProgressBar(searchProgress);
 
         JPanel resumeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 8));
         resumeRow.setOpaque(false);
@@ -65,6 +69,7 @@ public final class JobRecommendationApp extends JFrame {
         JPanel resumeCard = card(new BorderLayout(0, 4));
         resumeCard.add(sectionLabel("1  ·  YOUR RESUME"), BorderLayout.NORTH);
         resumeCard.add(resumeRow, BorderLayout.CENTER);
+        resumeCard.add(resumeProgress, BorderLayout.SOUTH);
 
         JPanel searchRow = new JPanel(new GridBagLayout());
         searchRow.setOpaque(false);
@@ -79,6 +84,7 @@ public final class JobRecommendationApp extends JFrame {
         JPanel searchCard = card(new BorderLayout(0, 6));
         searchCard.add(sectionLabel("2  ·  FIND YOUR NEXT ROLE"), BorderLayout.NORTH);
         searchCard.add(searchRow, BorderLayout.CENTER);
+        searchCard.add(searchProgress, BorderLayout.SOUTH);
 
         JLabel title = new JLabel("Find work that fits your experience");
         title.setFont(new Font("SansSerif", Font.BOLD, 25));
@@ -109,7 +115,6 @@ public final class JobRecommendationApp extends JFrame {
         jobsTable.setSelectionForeground(INK);
         jobsTable.setShowGrid(false);
         jobsTable.setIntercellSpacing(new Dimension(0, 1));
-        jobsTable.setFillsViewportHeight(true);
         jobsTable.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
         jobsTable.getTableHeader().setForeground(MUTED);
         jobsTable.getTableHeader().setBackground(new Color(249, 250, 252));
@@ -190,6 +195,14 @@ public final class JobRecommendationApp extends JFrame {
         combo.setPreferredSize(new Dimension(155, 38));
     }
 
+    private void styleProgressBar(JProgressBar bar) {
+        bar.setIndeterminate(true);
+        bar.setVisible(false);
+        bar.setForeground(BRAND);
+        bar.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
+        bar.setPreferredSize(new Dimension(bar.getPreferredSize().width, 6));
+    }
+
     private void styleButton(JButton button, boolean primary) {
         button.setFont(new Font("SansSerif", Font.BOLD, 13));
         button.setForeground(primary ? Color.WHITE : BRAND);
@@ -212,7 +225,7 @@ public final class JobRecommendationApp extends JFrame {
         }
     }
 
-    private void chooseResume(JButton extractButton) {
+    private void chooseResume() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Choose a PDF, DOC, DOCX, TXT, or image resume (10 MB max)");
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
@@ -222,8 +235,10 @@ public final class JobRecommendationApp extends JFrame {
         }
     }
 
-    private void processResume(JButton extractButton, JButton searchButton) {
+    private void processResume() {
+        chooseButton.setEnabled(false);
         extractButton.setEnabled(false);
+        resumeProgress.setVisible(true);
         statusLabel.setText("Reading resume and extracting skills and experience…");
         new SwingWorker<Profile, Void>() {
             @Override protected Profile doInBackground() throws Exception {
@@ -237,10 +252,13 @@ public final class JobRecommendationApp extends JFrame {
                     experienceYears = profile.years;
                     searchButton.setEnabled(true);
                     statusLabel.setText(profileSummary() + " Enter a role and location to search live jobs.");
+                    showToast(profileSummary(), true);
                 } catch (Exception exception) {
                     showError(exception, "Could not read resume");
                 } finally {
+                    chooseButton.setEnabled(true);
                     extractButton.setEnabled(true);
+                    resumeProgress.setVisible(false);
                 }
             }
         }.execute();
@@ -251,7 +269,7 @@ public final class JobRecommendationApp extends JFrame {
                 + (experienceYears == null ? "not detected" : experienceYears + " years") + ").";
     }
 
-    private void searchJobs(JButton searchButton) {
+    private void searchJobs() {
         String query = queryField.getText().trim();
         if (query.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Enter a role or search term, such as Java developer.", "Search term required", JOptionPane.INFORMATION_MESSAGE);
@@ -260,6 +278,10 @@ public final class JobRecommendationApp extends JFrame {
         String location = locationField.getText().trim();
         String country = ((String) countryField.getSelectedItem()).replaceAll(".*\\((..?)\\)$", "$1");
         searchButton.setEnabled(false);
+        queryField.setEnabled(false);
+        locationField.setEnabled(false);
+        countryField.setEnabled(false);
+        searchProgress.setVisible(true);
         statusLabel.setText("Generating sample listings…");
         new SwingWorker<List<Job>, Void>() {
             @Override protected List<Job> doInBackground() throws Exception { return jobSearch.search(query, location, country); }
@@ -273,10 +295,15 @@ public final class JobRecommendationApp extends JFrame {
                                 match.job().location(), match.job().salaryRange(), match.experienceNote()});
                     }
                     statusLabel.setText(jobs.size() + " sample listings loaded. Double-click a row to open its application page.");
+                    showToast(jobs.size() + " sample listings loaded.", true);
                 } catch (Exception exception) {
                     showError(exception, "Job search failed");
                 } finally {
                     searchButton.setEnabled(true);
+                    queryField.setEnabled(true);
+                    locationField.setEnabled(true);
+                    countryField.setEnabled(true);
+                    searchProgress.setVisible(false);
                 }
             }
         }.execute();
@@ -296,7 +323,7 @@ public final class JobRecommendationApp extends JFrame {
             }
             Desktop.getDesktop().browse(listing);
         } catch (Exception exception) {
-            JOptionPane.showMessageDialog(this, "Could not open listing: " + exception.getMessage(), "Open job", JOptionPane.ERROR_MESSAGE);
+            showToast("Could not open listing: " + exception.getMessage(), false);
         }
     }
 
@@ -304,7 +331,26 @@ public final class JobRecommendationApp extends JFrame {
         Throwable cause = exception.getCause() == null ? exception : exception.getCause();
         String message = cause.getMessage() == null ? cause.toString() : cause.getMessage();
         statusLabel.setText(title + ": " + message);
-        JOptionPane.showMessageDialog(this, message, title, JOptionPane.ERROR_MESSAGE);
+        showToast(title + ": " + message, false);
+    }
+
+    private void showToast(String message, boolean success) {
+        JWindow toast = new JWindow(this);
+        JLabel label = new JLabel("<html><body style='width: 320px'>" + message + "</body></html>");
+        label.setForeground(Color.WHITE);
+        label.setFont(new Font("SansSerif", Font.BOLD, 13));
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(success ? new Color(31, 126, 91) : new Color(196, 51, 51));
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+        panel.add(label, BorderLayout.CENTER);
+        toast.setContentPane(panel);
+        toast.pack();
+        Point location = getLocationOnScreen();
+        toast.setLocation(location.x + getWidth() - toast.getWidth() - 30, location.y + getHeight() - toast.getHeight() - 60);
+        toast.setVisible(true);
+        Timer dismiss = new Timer(3500, event -> toast.dispose());
+        dismiss.setRepeats(false);
+        dismiss.start();
     }
 
     private record Profile(Set<String> skills, Integer years) { }
